@@ -1,7 +1,16 @@
 deploy-to-github
 ================
 
-Using github as Maven repository.
+Using `deploy.py` script, you can deploy your maven-based Java artifacts to the github. From other maven-based Java projects, your artifacts are accessible from the github.
+
+This script is based on http://cemerick.com/2010/08/24/hosting-maven-repos-on-github/.
+
+Requirements
+------------
+
+* You need a github account.
+* You need `python` and `git` on your machine. 
+
 
 Set up
 ------
