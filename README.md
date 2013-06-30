@@ -60,3 +60,23 @@ Then your artifact will be deployed to github and accessible from other Java pro
   </dependency>
 </dependencies>
 ```
+
+Example
+-------
+
+Under `example` directory, you can find 2 example projects:
+
+* mathlib: example library project.
+* helloworl: example application which has dependency on `mathlib` project.
+
+Please refer to `pom.xml` file from these 2 projects to see how they're configured. 
+
+These examples assume that GitHub repository is https://github.com/d5/mvn-repo. So, if you run:
+
+```
+python deploy.py example/mathlib
+```
+
+`mathlib` artifact will be built and deployed to https://github.com/d5/mvn-repo. (Of course, this will fail because you don't have my GitHub password; this is just an example.)
+
+Then, when you build `helloworld` project, maven will download `mathlib` artifact from GitHub.
