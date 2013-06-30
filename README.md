@@ -15,10 +15,10 @@ Requirements
 Set up
 ------
 
-Create a github repo that you will use as your Maven repository.
+Create a github repo that you will use as your Maven repository. Example:
 
 ```
-Example: https://github.com/d5/mvn-repo
+https://github.com/d5/mvn-repo
 ```
 
 In `pom.xml` file of your your Java project that you want to deploy to github, add the following:
@@ -27,8 +27,8 @@ In `pom.xml` file of your your Java project that you want to deploy to github, a
 ```
   <distributionManagement>
     <repository>
-      <id>d5-repo</id>
-      <url>https://github.com/d5/mvn-repo</url>
+      <id>my-repo</id>
+      <url>https://github.com/your-github-account-name/your-repo-name</url>
     </repository>
   </distributionManagement>
 ```
@@ -47,16 +47,16 @@ Then your artifact will be deployed to github and accessible from other Java pro
 ```
 <repositories>
     <repository>
-        <id>d5-repo</id>
-        <url>https://github.com/d5/mvn-repo/raw/master</url>
+        <id>my-repo</id>
+        <url>https://github.com/your-github-account-name/your-repo-name/raw/master</url>
     </repository>
 </repositories>
 
 <dependencies>
   <dependency>
-    <groupId>gs.daniel.examples</groupId>
-    <artifactId>helloworld</artifactId>
-    <version>1.1</version>
+    <groupId>your.artifact.group.id</groupId>
+    <artifactId>your-artifact-id</artifactId>
+    <version>your.artifact.version</version>
   </dependency>
 </dependencies>
 ```
