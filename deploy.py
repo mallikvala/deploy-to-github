@@ -1,21 +1,11 @@
 # Usage:
 # 	python deploy.py target-project-dir
-#
-# Description:
-# 	This script reads your pom.xml file in your 'target-project-dir' to locate
-# 	proper github repository to deploy to.
-#
-# Requirements:
-#	- python 2.x installed
-# 	- git installed
 
-import os,sys
+import os, sys, logging, tempfile, shutil, re
 from xml.etree import ElementTree
 
-class pom_obj:
+class pom_xml:
 	def __init__(self, target_project_dir):
-		import re
-
 		pom_path = os.path.join(target_project_dir, "pom.xml")
 		self.project = ElementTree.parse(pom_path).getroot()
 		self.ns_prefix = re.search("{.+}", self.project.tag).group(0)
@@ -50,81 +40,106 @@ class pom_obj:
 		p = o.path.split('/')
 		return o.scheme+"://"+o.netloc+"/"+p[1]+"/"+p[2]+".git"
 
+class git_temp_local_repo:
+	def __init__(self, repo_url):
+		self.temp_dir = tempfile.mkdtemp()
 
-def clone_temp_local_repo(pom):
-	import random, string
+		if os.system("git clone -n " + repo_url + " " + self.temp_dir):
+			raise Exception("Failed to clone: " + repo_url)
 
-	temp_local_dir = None
-	for i in range(5):
-		temp_dir = ''.join(random.choice(string.ascii_uppercase + string.digits) for x in range(32))
-		if not os.path.exists(temp_dir):
-			temp_local_dir = temp_dir
-			break
+	def push(self, commit_msg, branch='master', delete_after_push=True):
+		if not self.temp_dir:
+			raise Exception("Temporary directory was not created.")
 
-	if not temp_local_dir:
-		print "Failed to create a temporary local clone directory. Try again."
-		return None
+		current_dir = os.getcwd()
+		os.chdir(self.temp_dir)
+		logging.debug("Changed directory to: " + self.temp_dir)
 
-	if os.system("git clone -n "+pom.repo_git_url+" "+temp_local_dir):
-		print "Failed to clone from the remote repository: " + pom.repo_git_url
+		files_to_push = self._get_files_to_push()
+		for f in files_to_push:
+			logging.debug("File to push: " + f)
+		files_to_push_str = " ".join(files_to_push)
 
-	return temp_local_dir
+		add_command = "git add " + files_to_push_str
+		logging.debug("Executing: " + add_command)
+		os.system(add_command)
 
-def push_to_remote_repo(deploy_path, pom):
-	os.chdir(deploy_path)
+		commit_command = "git commit " + files_to_push_str + " -m '"+commit_msg+"'"
+		logging.debug("Executing: " + commit_command)
+		os.system(commit_command)
 
-	files_to_add = []
+		push_command = "git push origin " + branch
+		logging.debug("Executing: " + push_command)
+		os.system(push_command)
 
-	for root, dirs, files in os.walk(deploy_path):
-		files_to_add.extend([os.path.join(root, f) for f in files])
+		os.chdir(current_dir)
+		logging.debug("Changed directory to: " + current_dir)
 
-	commit_msg = pom.group_id+":"+pom.artifact_id+":"+pom.version
+		if delete_after_push:
+			self.delete()
 
-	os.system("git add "+" ".join(files_to_add))
-	os.system("git commit "+" ".join(files_to_add)+" -m '"+commit_msg+"'")
-	os.system("git push origin master")
+	def delete(self):
+		if self.temp_dir:
+			#shutil.rmtree(self.temp_dir)
+			self.temp_dir = None
+
+	def _get_files_to_push(self):
+		files_to_push = []
+
+		for root, dirs, files in os.walk(self.temp_dir):
+			if '.git' in dirs:
+				dirs.remove('.git')
+
+			files_to_push.extend([os.path.join(root, f) for f in files])
+
+		return files_to_push
 
 def deploy(target_project_dir):
-	current_dir = os.getcwd()
-	target_project_dir = os.path.abspath(target_project_dir)
 	if not os.path.exists(target_project_dir) or not os.path.isdir(target_project_dir):
-		print "Target directory does not eixst or is not a directory: " + target_project_dir
+		logging.error('Target project directory does not exist: ' + target_project_dir)
 		return
+	target_project_dir = os.path.abspath(target_project_dir)
+	logging.info('Target project directory: ' + target_project_dir)
+
+	target_pom_xml = pom_xml(target_project_dir)
 
 	try:
-		pom = pom_obj(target_project_dir)
-	except:
-		print "Failed to load pom.xml. Make sure the file exists and it contains all required info: groupId, artifactId, version, and, distributionManagement.repository."
-		return
+		temp_repo = git_temp_local_repo(target_pom_xml.repo_git_url)
+		temp_repo_path = temp_repo.temp_dir
+		logging.info("Clonining maven repository to: " + temp_repo_path)
 
-	temp_local_dir = clone_temp_local_repo(pom)
-	if not temp_local_dir:
-		return
+		# build the target project and deploy to the temporary repo.
+		current_dir = os.getcwd()
+		os.chdir(target_project_dir)
 
-	temp_local_dir = os.path.abspath(temp_local_dir)
+		deploy_path = os.path.join(temp_repo_path, "releases")
+		update_release = "-DupdateReleaseInfo=true"
+		if target_pom_xml.is_snapshot:
+			deploy_path = os.path.join(temp_repo_path, "snapshots")
+			update_release = "-DupdateReleaseInfo=false"
+		
+		deploy_command_line = "mvn -DaltDeploymentRepository="+target_pom_xml.repo_id+"::default::file:"+deploy_path+" "+update_release+" clean deploy"
 
-	os.chdir(target_project_dir)
+		if os.system(deploy_command_line):
+			print "Deploy failed."
+			return
 
-	deploy_path = os.path.join(temp_local_dir, "releases")
-	update_release = "-DupdateReleaseInfo=true"
-	if pom.is_snapshot:
-		deploy_path = os.path.join(temp_local_dir, "snapshots")
-		update_release = "-DupdateReleaseInfo=false"
-	
-	deploy_command_line = "mvn -DaltDeploymentRepository="+pom.repo_id+"::default::file:"+deploy_path+" "+update_release+" clean deploy"
+		os.chdir(current_dir)
 
-	if os.system(deploy_command_line):
-		print "Deploy failed."
-		return
-
-	push_to_remote_repo(deploy_path, pom)
-
-	import shutil
-	shutil.rmtree(temp_local_dir)
+		commit_msg = target_pom_xml.group_id + ":" + target_pom_xml.artifact_id + ":" + target_pom_xml.version
+		temp_repo.push(commit_msg)
+	finally:
+		temp_repo.delete()
 
 if __name__ == '__main__':
+	log_format = '%(asctime)s %(filename)s(%(lineno)d) %(levelname)s %(message)s'
+	logging.basicConfig(level=logging.INFO, format=log_format)
+
 	if len(sys.argv) < 2:
 		print "usage: python "+os.path.basename(__file__)+" target-project-dir"
 		exit(1)
 
-	deploy(sys.argv[1])
+	try:
+		deploy(sys.argv[1])
+	except Exception as exception:
+		logging.exception(exception)
